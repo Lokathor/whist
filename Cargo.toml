@@ -2,7 +2,7 @@
 name = "whist"
 description = "word-histogram CLI tool."
 repository = "https://github.com/Lokathor/whist"
-version = "0.0.1-alpha.0"
+version = "0.0.1"
 authors = ["Lokathor <zefria@gmail.com>"]
 edition = "2018"
 license = "AGPL"
