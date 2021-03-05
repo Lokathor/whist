@@ -5,6 +5,6 @@ repository = "https://github.com/Lokathor/whist"
 version = "0.0.1"
 authors = ["Lokathor <zefria@gmail.com>"]
 edition = "2018"
-license = "AGPL"
+license = "AGPL-3.0-or-later"
 
 [dependencies]
