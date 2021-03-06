@@ -3,42 +3,44 @@ use std::{
   path::{Path, PathBuf},
 };
 
+use bstr::ByteSlice;
+
+use unicase::UniCase;
+
 fn main() {
   let args: Vec<String> = std::env::args().collect();
   let print_by_frequency =
     if args.iter().any(|s| s.as_str() == "--print-by-frequency") { true } else { false };
+  let case_sensitive =
+    if args.iter().any(|s| s.as_str() == "--case-sensitive") { true } else { false };
 
   const TEN_MEGABYTES: usize = 10 * 1024 * 1024;
   let mut buf = Vec::with_capacity(TEN_MEGABYTES);
   let mut intern: HashSet<&'static str> = HashSet::new();
-  let mut word_counts: BTreeMap<&'static str, usize> = BTreeMap::new();
+  let mut word_counts: BTreeMap<UniCase<&'static str>, usize> = BTreeMap::new();
+  let mut word_counts_cased: BTreeMap<&'static str, usize> = BTreeMap::new();
+  let mut biggest_word: usize = 0;
 
   recursive_read_dir(".", |p| {
     match std::fs::File::open(&p) {
       Err(e) => eprintln!("Couldn't open {path}: {e}", path = p.display(), e = e),
       Ok(mut f) => match std::io::Read::read_to_end(&mut f, &mut buf) {
         Err(e) => eprintln!("Error while reading {path}: {e}", path = p.display(), e = e),
-        Ok(_byte_count_read) => match core::str::from_utf8(&buf) {
-          Err(_) => {
-            eprintln!("Error: {path} is not utf8. TODO: support non-utf8.", path = p.display())
-          }
-          Ok(s) => {
-            for term in StrBreaker::new(s) {
-              match term {
-                Term::Letters(letters) => {
-                  let interned_letters: &'static str =
-                    intern.get(letters).copied().unwrap_or_else(|| {
-                      let leaked: &'static str = Box::leak(String::from(letters).into_boxed_str());
-                      intern.insert(leaked);
-                      leaked
-                    });
-                  *word_counts.entry(interned_letters).or_insert(0) += 1;
-                }
-                _ => (),
-              }
+        Ok(_byte_count_read) => {
+          for word in buf.words() {
+            let interned_letters: &'static str = intern.get(word).copied().unwrap_or_else(|| {
+              let leaked: &'static str = Box::leak(String::from(word).into_boxed_str());
+              intern.insert(leaked);
+              biggest_word = biggest_word.max(leaked.len());
+              leaked
+            });
+            if case_sensitive {
+              *word_counts_cased.entry(interned_letters).or_insert(0) += 1;
+            } else {
+              *word_counts.entry(UniCase::new(interned_letters)).or_insert(0) += 1;
             }
           }
-        },
+        }
       },
     }
     buf.clear();
@@ -46,82 +48,34 @@ fn main() {
 
   if print_by_frequency {
     use std::cmp::Ordering;
-    let mut v: Vec<(&'static str, usize)> = word_counts.into_iter().collect();
+    let mut v: Vec<(&'static str, usize)> = if case_sensitive {
+      word_counts_cased.into_iter().collect()
+    } else {
+      word_counts.into_iter().map(|(uc, c)| (uc.into_inner(), c)).collect()
+    };
     v.sort_unstable_by(|(w1, c1), (w2, c2)| match c1.cmp(c2) {
       Ordering::Less => Ordering::Greater,
       Ordering::Greater => Ordering::Less,
       Ordering::Equal => w1.cmp(w2),
     });
     for (word, count) in v.iter() {
-      println!("{word}: {count}", word = word, count = count);
+      println!(
+        "{word:>biggest_word$}: {count}",
+        word = word,
+        count = count,
+        biggest_word = biggest_word
+      );
     }
   } else {
     for (word, count) in word_counts.iter() {
-      println!("{word}: {count}", word = word, count = count);
+      println!(
+        "{word:>biggest_word$}: {count}",
+        word = word,
+        count = count,
+        biggest_word = biggest_word
+      );
     }
   }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Term<'s> {
-  Letters(&'s str),
-  Symbols(&'s str),
-}
-struct StrBreaker<'s> {
-  spare: &'s str,
-}
-impl<'s> StrBreaker<'s> {
-  pub fn new(spare: &'s str) -> Self {
-    Self { spare: spare.trim() }
-  }
-
-  pub fn is_kinda_letter(c: char) -> bool {
-    c.is_alphanumeric() || c == '_' || c == '\''
-  }
-}
-impl<'s> Iterator for StrBreaker<'s> {
-  type Item = Term<'s>;
-
-  fn next(&mut self) -> Option<Term<'s>> {
-    if self.spare.is_empty() {
-      return None;
-    }
-    let c = self.spare.chars().nth(0).unwrap();
-    if StrBreaker::is_kinda_letter(c) {
-      if let Some((i, _)) =
-        self.spare.char_indices().find(|(_, c)| !StrBreaker::is_kinda_letter(*c))
-      {
-        let out = Term::Letters(&self.spare[..i]);
-        self.spare = &self.spare[i..];
-        Some(out)
-      } else {
-        let out = Term::Letters(self.spare);
-        self.spare = "";
-        Some(out)
-      }
-    } else {
-      if let Some((i, _)) = self.spare.char_indices().find(|(_, c)| StrBreaker::is_kinda_letter(*c))
-      {
-        let out = Term::Symbols(&self.spare[..i]);
-        self.spare = &self.spare[i..];
-        Some(out)
-      } else {
-        let out = Term::Symbols(self.spare);
-        self.spare = "";
-        Some(out)
-      }
-    }
-  }
-}
-
-#[test]
-fn test_str_breaker() {
-  let mut sb = StrBreaker::new("_abc.words();");
-  assert_eq!(sb.next(), Some(Term::Letters("_abc")));
-  assert_eq!(sb.next(), Some(Term::Symbols(".")));
-  assert_eq!(sb.next(), Some(Term::Letters("words")));
-  assert_eq!(sb.next(), Some(Term::Symbols("();")));
-  assert_eq!(sb.next(), None);
 }
 
 /// Recursively walks over the `path` given, which must be a directory.
