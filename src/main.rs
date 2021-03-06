@@ -7,8 +7,19 @@ use bstr::ByteSlice;
 
 use unicase::UniCase;
 
+#[rustfmt::skip]
+fn print_help() {
+  println!("whist is a word-histogram sort of utility.");
+  println!("--print-by-frequency     Will print the words by frequency.");
+  println!("--case-sensitive         Will make searches case sensitive.");
+}
+
 fn main() {
   let args: Vec<String> = std::env::args().collect();
+  if args.iter().any(|s| s.as_str() == "--help") {
+    print_help();
+    return;
+  }
   let print_by_frequency =
     if args.iter().any(|s| s.as_str() == "--print-by-frequency") { true } else { false };
   let case_sensitive =
