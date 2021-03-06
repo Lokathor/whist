@@ -57,6 +57,10 @@ impl<'s> StrBreaker<'s> {
   pub fn new(spare: &'s str) -> Self {
     Self { spare: spare.trim() }
   }
+
+  pub fn is_kinda_letter(c: char) -> bool {
+    c.is_alphanumeric() || c == '_' || c == '\''
+  }
 }
 impl<'s> Iterator for StrBreaker<'s> {
   type Item = Term<'s>;
@@ -66,9 +70,9 @@ impl<'s> Iterator for StrBreaker<'s> {
       return None;
     }
     let c = self.spare.chars().nth(0).unwrap();
-    if c.is_alphanumeric() || c == '_' {
+    if StrBreaker::is_kinda_letter(c) {
       if let Some((i, _)) =
-        self.spare.char_indices().find(|(_, c)| !(c.is_alphanumeric() || *c == '_'))
+        self.spare.char_indices().find(|(_, c)| !StrBreaker::is_kinda_letter(*c))
       {
         let out = Term::Letters(&self.spare[..i]);
         self.spare = &self.spare[i..];
@@ -79,8 +83,7 @@ impl<'s> Iterator for StrBreaker<'s> {
         Some(out)
       }
     } else {
-      if let Some((i, _)) =
-        self.spare.char_indices().find(|(_, c)| (c.is_alphanumeric() || *c == '_'))
+      if let Some((i, _)) = self.spare.char_indices().find(|(_, c)| StrBreaker::is_kinda_letter(*c))
       {
         let out = Term::Symbols(&self.spare[..i]);
         self.spare = &self.spare[i..];
