@@ -4,6 +4,10 @@ use std::{
 };
 
 fn main() {
+  let args: Vec<String> = std::env::args().collect();
+  let print_by_frequency =
+    if args.iter().any(|s| s.as_str() == "--print-by-frequency") { true } else { false };
+
   const TEN_MEGABYTES: usize = 10 * 1024 * 1024;
   let mut buf = Vec::with_capacity(TEN_MEGABYTES);
   let mut intern: HashSet<&'static str> = HashSet::new();
@@ -40,8 +44,21 @@ fn main() {
     buf.clear();
   });
 
-  for (word, count) in word_counts.iter() {
-    println!("{word}: {count}", word = word, count = count);
+  if print_by_frequency {
+    use std::cmp::Ordering;
+    let mut v: Vec<(&'static str, usize)> = word_counts.into_iter().collect();
+    v.sort_unstable_by(|(w1, c1), (w2, c2)| match c1.cmp(c2) {
+      Ordering::Less => Ordering::Greater,
+      Ordering::Greater => Ordering::Less,
+      Ordering::Equal => w1.cmp(w2),
+    });
+    for (word, count) in v.iter() {
+      println!("{word}: {count}", word = word, count = count);
+    }
+  } else {
+    for (word, count) in word_counts.iter() {
+      println!("{word}: {count}", word = word, count = count);
+    }
   }
 }
 
